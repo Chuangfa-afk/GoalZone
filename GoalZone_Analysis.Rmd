@@ -1,0 +1,303 @@
+---
+title: "Team 9 Team Project"
+author: "Section A Team 9: Yan Guan(yg238), Erik Henig(eh307), Jingjing Hu(jh892), Chuangfa Liang (cl670), Nupur Shah(ns417)"
+date: "2023-10-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+# need count function 
+data <- read_csv("~/Documents/Data Science/fitness_class_2212 2.csv")
+# import the data
+```
+```{r}
+# use data table 
+library(data.table)
+data = setDT(data)
+unique(data$booking_id)
+# return the unique values in each column to look for errors
+class(data$booking_id)
+# return the class to see if there are data type errors
+```
+```{r}
+unique(data$months_as_member)
+class(data$months_as_member)
+```
+
+```{r}
+unique(data$weight)
+# some NA values in weight data 
+class(data$weight)
+```
+```{r}
+# replace the NA values with the mean of weight 
+avgWeight = mean(data$weight , na.rm = TRUE)
+avgWeight
+```
+```{r}
+# identify NA values in the weight column and replace them with our avgWeight values
+data[is.na(weight) , weight := avgWeight]
+unique(data$weight)
+```
+
+```{r}
+unique(data$days_before)
+# we need to remove the string "days" from entries
+class(data$days_before)
+# the data type is a string
+```
+```{r}
+# substitute the string days and replace it with a blank space ""
+# the [, ] is instructing R to find look through all the rows 
+data[, days_before := sub("days" , "", days_before)]
+unique(data$days_before)
+# here we are updating the column so that it contains numeric values instead of strings
+data[, days_before := as.numeric(days_before)]
+class(data$days_before)
+```
+
+```{r}
+unique(data$day_of_week)
+# need to change Wednesday to Wed and Fri . to Fri 
+data[, day_of_week := sub("Wednesday" , "Wed", day_of_week)]
+data[, day_of_week := sub("Fri." , "Fri", day_of_week)]
+data[, day_of_week := sub("Monday" , "Mon", day_of_week)]
+class(data$day_of_week)
+
+```
+```{r}
+unique(data$time)
+class(data$time)
+```
+```{r}
+unique(data$category)
+# some "-" that stand for NA values
+class(data$category)
+```
+```{r}
+# replace the "-" with the most frequent entry
+# count the amount of rows where category is a specified value 
+count(data[category=="Strength"]) # 233
+count(data[category=="HIIT"]) # 667 
+count(data[category=="Cycling"]) # 376
+count(data[category=="Yoga"]) # 135
+count(data[category=="-"]) # 13 
+count(data[category=="Aqua"]) # 76
+data[, category := sub("-" , "HIIT", category)]
+```
+
+```{r}
+unique(data$attended)
+class(data$attended)
+```
+
+```{r}
+# Add a new column years_member
+data[, years_member := months_as_member/12]
+head(data)
+
+```
+
+```{r}
+# Data splitting
+data_set_size = floor(nrow(data) * .8)
+set.seed(59)
+index = sample(seq_len(nrow(data)), size = data_set_size)
+training = data[index]
+testing = data[-index]
+```
+
+
+```{r}
+# Convert variables to factors
+library(randomForest)
+training$day_of_week = as.factor(training$day_of_week)
+training$time = as.factor(training$time)
+training$category = as.factor(training$category)
+training$attended = as.factor(training$attended)
+
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+library(randomForest)
+library(rpart)
+
+# Convert 'attended' to factor for training and testing datasets
+training$attended <- as.factor(training$attended)
+testing$attended <- as.factor(testing$attended)
+
+# Convert 'day_of_week' to factor for training and testing datasets
+training$day_of_week <- as.factor(training$day_of_week)
+testing$day_of_week <- as.factor(testing$day_of_week)
+
+# Logistic Regression
+logit_model <- glm(attended ~ . -booking_id, data=training, family=binomial())
+
+# Decision Tree (CART)
+tree_model <- rpart(attended ~ . -booking_id, data=training, method="class")
+
+### Null Model
+model.null <- aggregate( rep(1/nrow(training), nrow(training)) ~ training$attended, FUN=sum)
+null.prediction <- model.null[which.max(model.null[,2]), 1]
+
+# In-sample accuracy
+in_sample_accuracy_null <- sum(null.prediction == training$attended) / nrow(training)
+paste("In-sample accuracy:", in_sample_accuracy_null)
+
+# Out-of-sample accuracy
+out_of_sample_accuracy_null <- sum(null.prediction == testing$attended) / nrow(testing)
+paste("Out of sample accuracy:", out_of_sample_accuracy_null)
+
+# Predictions for Logistic Regression
+train_pred_logit <- ifelse(predict(logit_model, training, type="response") >= 0.5, 1, 0)
+test_pred_logit <- ifelse(predict(logit_model, testing, type="response") >= 0.5, 1, 0)
+
+# Predictions for Decision Tree (CART)
+train_pred_tree <- predict(tree_model, training, type="class")
+test_pred_tree <- predict(tree_model, testing, type="class")
+
+
+# Calculate accuracies
+in_sample_accuracy_logit <- mean(train_pred_logit == training$attended)
+out_of_sample_accuracy_logit <- mean(test_pred_logit == testing$attended)
+
+in_sample_accuracy_tree <- mean(train_pred_tree == training$attended)
+out_of_sample_accuracy_tree <- mean(test_pred_tree == testing$attended)
+
+in_sample_accuracy_null <- sum(null.prediction == training$attended) / nrow(training)
+out_of_sample_accuracy_null <- sum(null.prediction == testing$attended) / nrow(testing)
+
+
+
+```
+
+```{r}
+### Encoding and do random forest model
+library(randomForest)
+library(ROSE)
+library(caret)
+library(ggplot2)
+
+library(data.table)
+setDT(data)
+temp_data <- data[, !("booking_id"), with = FALSE]
+
+# Drop booking_id column from a temporary data
+#temp_data <- data[ , -which(names(data) %in% c("booking_id"))]
+
+# List of categorical columns to be encoded
+cat_col <- c("day_of_week", "time", "category")
+
+# Apply label encoding to the categorical columns
+for (col in cat_col) {
+  temp_data[[col]] <- as.numeric(as.factor(temp_data[[col]])) - 1
+}
+
+# Plotting the initial distribution of the target variable
+ggplot(temp_data, aes(x = factor(attended))) + geom_bar() + ggtitle("Initial Distribution")
+
+# Applying Random Over Sampling
+resampled_data <- ovun.sample(attended ~ ., data = temp_data, method = "over", N = 2*nrow(temp_data[temp_data$attended == 0,]))$data
+
+# Plotting the distribution of the target variable after oversampling
+ggplot(resampled_data, aes(x = factor(attended))) + geom_bar() + ggtitle("After Oversampling")
+
+# Splitting the oversampled data into training and testing sets
+trainIndex <- createDataPartition(resampled_data$attended, p = 0.8, list = FALSE)
+X_train <- resampled_data[trainIndex, -which(names(resampled_data) == "attended")]
+y_train <- resampled_data[trainIndex, "attended"]
+X_test <- resampled_data[-trainIndex, -which(names(resampled_data) == "attended")]
+y_test <- resampled_data[-trainIndex, "attended"]
+
+# Training a Random Forest
+RNF <- randomForest(as.factor(attended) ~ ., data = resampled_data[trainIndex, ])
+y_hat <- predict(RNF, X_test)
+
+# Predictions on the training data
+y_hat_train <- predict(RNF, X_train)
+
+# In-sample accuracy
+in_sample_accuracy_rf <- sum(y_train == y_hat_train) / length(y_train)
+print(paste("In-sample accuracy:", in_sample_accuracy_rf))
+
+# Out-of-sample accuracy
+out_of_sample_accuracy_rf <- sum(y_test == y_hat) / length(y_test)
+print(paste("Out-of-sample accuracy:", out_of_sample_accuracy_rf))
+
+
+```
+
+
+```{r}
+
+
+
+# Create a dataframe for visualization
+accuracy_data <- data.frame(
+  Model = rep(c("Logistic Regression", "Decision Tree", "Random Forest", "Null Model"), each=2),
+  Dataset = rep(c("In-sample", "Out-of-sample"), times=4),
+  Accuracy = c(in_sample_accuracy_logit, out_of_sample_accuracy_logit,
+               in_sample_accuracy_tree, out_of_sample_accuracy_tree,
+               in_sample_accuracy_rf, out_of_sample_accuracy_rf,
+               in_sample_accuracy_null, out_of_sample_accuracy_null)
+)
+
+# Plot
+library(ggplot2)
+ggplot(accuracy_data, aes(x=Model, y=Accuracy, fill=Dataset)) +
+  geom_bar(stat="identity", position="dodge") +
+  theme(axis.text.x = element_text(angle=45, hjust=1)) +
+  labs(title="Model Accuracy Comparison", y="Accuracy")
+
+```
+
+```{r}
+library(reshape2)
+ 
+# creating correlation matrix
+corr_mat <- round(cor(temp_data),2)
+ 
+melted_corr_mat <- melt(corr_mat)
+
+# Plotting the correlation heatmap
+ggplot(data = melted_corr_mat, aes(x = Var1, y = Var2, fill = value)) + 
+  geom_tile() +
+  theme_minimal() +
+  labs(title = "Correlation Matrix", x = NULL, y = NULL) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), 
+        plot.title.position = "plot",
+        plot.title = element_text(hjust = 0.5))          
+
+
+
+```
+
+```{r}
+# K-fold Cross Validation
+folds <- createFolds(training$attended, k=10)
+random_forest_result <- lapply(folds, function(fold) {
+  train_data <- resampled_data[-fold, ]
+  test_data <- resampled_data[fold, ]
+  
+  model = randomForest(as.factor(attended) ~ ., data = train_data )
+
+  predictions <- predict(model, newdata=test_data)
+  
+  accuracy <- sum(predictions == test_data$attended) / length(predictions)
+  return(accuracy)
+})
+
+accuracy <- mean(unlist(random_forest_result))
+accuracy
+```
+
+
