@@ -6,11 +6,11 @@ The GoalZone Fitness Club Analysis Project, conducted by Team 9, provides a comp
 
 ## Team Members
 
-- Yan Guan (yg238)
-- Erik Henig (eh307)
-- Jingjing Hu (jh892)
-- Chuangfa Liang (cl670)
-- Nupur Shah (ns417)
+- Yan Guan
+- Erik Henig
+- Jingjing Hu
+- Chuangfa Liang
+- Nupur Shah
 
 ## Table of Contents
 
